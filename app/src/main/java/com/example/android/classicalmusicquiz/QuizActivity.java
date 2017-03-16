@@ -196,6 +196,8 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
     }
 
 
+    // TODO (1): Create a method that shows a MediaStyle notification with two actions (play/pause, skip to previous). Clicking on the notification should launch this activity. It should take one argument that defines the state of MediaSession.
+
     /**
      * The OnClick method for all of the answer buttons. The method uses the index of the button
      * in button array to to get the ID of the sample from the array of question IDs. It also
@@ -317,6 +319,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
                     mExoPlayer.getCurrentPosition(), 1f);
             mMediaSession.setPlaybackState(mStateBuilder.build());
         }
+        // TODO (2): Call the method to show the notification, passing in the PlayBackStateCompat object.
     }
 
     @Override
