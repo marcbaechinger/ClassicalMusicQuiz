@@ -22,4 +22,7 @@
     <string name="notification_text">Press play to hear the piece!</string>
     <string name="sample_list_load_error">Error loading one or more samples!</string>
     <string name="exoplayer_sample_error">Unable to load the sample into ExoPlayer</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="restart">Restart</string>
 </resources>
