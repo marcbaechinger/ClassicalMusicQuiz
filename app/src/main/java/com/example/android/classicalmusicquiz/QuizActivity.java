@@ -46,6 +46,7 @@ import com.google.android.exoplayer2.util.Util;
 
 import java.util.ArrayList;
 
+// TODO (1): Have this Activity implement ExoPlayer.EventListener and add the required methods.
 public class QuizActivity extends AppCompatActivity implements View.OnClickListener {
 
     private static final int CORRECT_ANSWER_DELAY_MILLIS = 1000;
@@ -123,6 +124,9 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
             mExoPlayer.prepare(mediaSource);
             mExoPlayer.setPlayWhenReady(true);
             mPlayerView.setPlayer(mExoPlayer);
+
+            // TODO (2): Call addListener() on the ExoPlayer instance and pass in 'this' to set the event listener to the player.
+
         } else {
             Toast.makeText(this, getString(R.string.exoplayer_sample_error),
                     Toast.LENGTH_SHORT).show();
@@ -237,4 +241,6 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         mExoPlayer.stop();
         mExoPlayer.release();
     }
+
+    // TODO (3): Add conditional logging statements to the onPlayerStateChanged() method that log when ExoPlayer is playing or paused.
 }
