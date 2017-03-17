@@ -189,6 +189,9 @@ public class QuizActivity extends AppCompatActivity {
 
         // MySessionCallback has methods that handle callbacks from a media controller.
         mMediaSession.setCallback(new MySessionCallback());
+
+        // we are in foreground and ready to play
+        mMediaSession.setActive(true);
     }
 
     /**
@@ -363,7 +366,6 @@ public class QuizActivity extends AppCompatActivity {
                 mStateBuilder.setState(PlaybackStateCompat.STATE_PLAYING,
                     mExoPlayer.getCurrentPosition(), 1f);
                 mMediaSession.setPlaybackState(mStateBuilder.build());
-                mMediaSession.setActive(true);
             } else if((playbackState == ExoPlayer.STATE_READY)){
                 mStateBuilder.setState(PlaybackStateCompat.STATE_PAUSED,
                     mExoPlayer.getCurrentPosition(), 1f);
