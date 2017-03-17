@@ -59,7 +59,7 @@ import com.google.android.exoplayer2.util.Util;
 
 import java.util.ArrayList;
 
-public class QuizActivity extends AppCompatActivity implements View.OnClickListener, ExoPlayer.EventListener {
+public class QuizActivity extends AppCompatActivity {
 
     private static final int CORRECT_ANSWER_DELAY_MILLIS = 1000;
     private static final String REMAINING_SONGS_KEY = "remaining_songs";
@@ -76,6 +76,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
     private static MediaSessionCompat mMediaSession;
     private PlaybackStateCompat.Builder mStateBuilder;
     private NotificationManager mNotificationManager;
+    private ComponentListener componentListener;
 
 
     @Override
@@ -83,6 +84,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_quiz);
 
+        componentListener = new ComponentListener();
 
         // Initialize the player view.
         mPlayerView = (SimpleExoPlayerView) findViewById(R.id.playerView);
@@ -121,34 +123,41 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         // Initialize the buttons with the composers names.
         mButtons = initializeButtons(mQuestionSampleIDs);
 
+        Sample answerSample = Sample.getSampleByID(this, mAnswerSampleID);
+        if (answerSample == null) {
+            Toast.makeText(this, getString(R.string.sample_not_found_error, mAnswerSampleID),
+                Toast.LENGTH_SHORT).show();
+            return;
+        }
         // Initialize the Media Session.
         initializeMediaSession();
+        // Initialize the player.
+        initializePlayer(Uri.parse(answerSample.getUri()));
+    }
 
-        // Create an instance of the ExoPlayer.
-        TrackSelector trackSelector = new DefaultTrackSelector();
-        LoadControl loadControl = new DefaultLoadControl();
-        mExoPlayer = ExoPlayerFactory.newSimpleInstance
-                (this, trackSelector, loadControl);
-
-        // Prepare the Media, and set the player to the player view.
-        String userAgent = Util.getUserAgent(this, "ClassicalMusicQuiz");
-        DataSource.Factory dataSourceFactory = new DefaultDataSourceFactory(this, userAgent);
-        ExtractorsFactory extractorsFactory = new DefaultExtractorsFactory();
-
-        Sample answerSample = Sample.getSampleByID(this, mAnswerSampleID);
-        MediaSource mediaSource;
-        if (answerSample != null) {
-            mediaSource = new ExtractorMediaSource(Uri.parse
-                (answerSample.getUri()), dataSourceFactory, extractorsFactory, null, null);
-            mExoPlayer.addListener(this);
+    private void initializePlayer(Uri mediaUri) {
+        if (mExoPlayer == null) {
+            // Create an instance of the ExoPlayer.
+            TrackSelector trackSelector = new DefaultTrackSelector();
+            LoadControl loadControl = new DefaultLoadControl();
+            mExoPlayer = ExoPlayerFactory.newSimpleInstance(this, trackSelector, loadControl);
+            mPlayerView.setPlayer(mExoPlayer);
+            // Prepare the MediaSource.
+            String userAgent = Util.getUserAgent(this, "ClassicalMusicQuiz");
+            MediaSource mediaSource = new ExtractorMediaSource(mediaUri, new DefaultDataSourceFactory(
+                this, userAgent), new DefaultExtractorsFactory(), null, null);
+            mExoPlayer.addListener(componentListener);
             mExoPlayer.prepare(mediaSource);
             mExoPlayer.setPlayWhenReady(true);
-            mPlayerView.setPlayer(mExoPlayer);
-            
-        } else {
-            Toast.makeText(this, getString(R.string.exoplayer_sample_error),
-                    Toast.LENGTH_SHORT).show();
         }
+    }
+
+    private void releasePlayer() {
+        mNotificationManager.cancelAll();
+        mMediaSession.setActive(false);
+        mExoPlayer.stop();
+        mExoPlayer.release();
+        mExoPlayer = null;
     }
 
     /**
@@ -195,7 +204,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
             Button currentButton = (Button) findViewById(mButtonIDs[i]);
             Sample currentSample = Sample.getSampleByID(this, answerSampleIDs.get(i));
             buttons[i] = currentButton;
-            currentButton.setOnClickListener(this);
+            currentButton.setOnClickListener(componentListener);
             if (currentSample != null) {
                 currentButton.setText(currentSample.getComposer());
             }
@@ -254,58 +263,7 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
     }
 
 
-    /**
-     * The OnClick method for all of the answer buttons. The method uses the index of the button
-     * in button array to to get the ID of the sample from the array of question IDs. It also
-     * toggles the UI to show the correct answer.
-     *
-     * @param v The button that was clicked.
-     */
-    @Override
-    public void onClick(View v) {
 
-        // Show the correct answer.
-        showCorrectAnswer();
-
-        // Get the button that was pressed.
-        Button pressedButton = (Button) v;
-
-        // Get the index of the pressed button
-        int userAnswerIndex = -1;
-        for (int i = 0; i < mButtons.length; i++) {
-            if (pressedButton.getId() == mButtonIDs[i]) {
-                userAnswerIndex = i;
-            }
-        }
-
-        // Get the ID of the sample that the user selected.
-        int userAnswerSampleID = mQuestionSampleIDs.get(userAnswerIndex);
-
-        // If the user is correct, increase there score and update high score.
-        if (QuizUtils.userCorrect(mAnswerSampleID, userAnswerSampleID)) {
-            mCurrentScore++;
-            QuizUtils.setCurrentScore(this, mCurrentScore);
-            if (mCurrentScore > mHighScore) {
-                mHighScore = mCurrentScore;
-                QuizUtils.setHighScore(this, mHighScore);
-            }
-        }
-
-        // Remove the answer sample from the list of all samples, so it doesn't get asked again.
-        mRemainingSampleIDs.remove(Integer.valueOf(mAnswerSampleID));
-
-        // Wait some time so the user can see the correct answer, then go to the next question.
-        final Handler handler = new Handler();
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                mExoPlayer.stop();
-                Intent nextQuestionIntent = new Intent(QuizActivity.this, QuizActivity.class);
-                nextQuestionIntent.putExtra(REMAINING_SONGS_KEY, mRemainingSampleIDs);
-                startActivity(nextQuestionIntent);
-            }
-        }, CORRECT_ANSWER_DELAY_MILLIS);
-    }
 
     /**
      * Disables the buttons and changes the background colors and player art to
@@ -332,59 +290,107 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
         }
     }
 
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        mNotificationManager.cancelAll();
-        mMediaSession.setActive(false);
-        mExoPlayer.stop();
-        mExoPlayer.release();
+        releasePlayer();
     }
 
-    
-    // ExoPlayer Event Listeners
+    private class ComponentListener implements ExoPlayer.EventListener, View.OnClickListener {
+        /**
+         * The OnClick method for all of the answer buttons. The method uses the index of the button
+         * in button array to to get the ID of the sample from the array of question IDs. It also
+         * toggles the UI to show the correct answer.
+         *
+         * @param v The button that was clicked.
+         */
+        @Override
+        public void onClick(View v) {
 
-    @Override
-    public void onTimelineChanged(Timeline timeline, Object manifest) {
-    }
+            // Show the correct answer.
+            showCorrectAnswer();
 
-    @Override
-    public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
-    }
+            // Get the button that was pressed.
+            Button pressedButton = (Button) v;
 
-    @Override
-    public void onLoadingChanged(boolean isLoading) {
-    }
+            // Get the index of the pressed button
+            int userAnswerIndex = -1;
+            for (int i = 0; i < mButtons.length; i++) {
+                if (pressedButton.getId() == mButtonIDs[i]) {
+                    userAnswerIndex = i;
+                }
+            }
 
-    /**
-     * Method that is called when the ExoPlayer state changes. Used to update the MediaSession
-     * PlayBackState to keep in sync, and post the media notification.
-     * @param playWhenReady true if ExoPlayer is playing, false if it's paused.
-     * @param playbackState int describing the state of ExoPlayer. Can be STATE_READY, STATE_IDLE,
-     *                      STATE_BUFFERING, or STATE_ENDED.
-     */
-    @Override
-    public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
-        if((playbackState == ExoPlayer.STATE_READY) && playWhenReady){
-            mStateBuilder.setState(PlaybackStateCompat.STATE_PLAYING,
-                    mExoPlayer.getCurrentPosition(), 1f);
-            mMediaSession.setPlaybackState(mStateBuilder.build());
-            mMediaSession.setActive(true);
-        } else if((playbackState == ExoPlayer.STATE_READY)){
-            mStateBuilder.setState(PlaybackStateCompat.STATE_PAUSED,
-                    mExoPlayer.getCurrentPosition(), 1f);
-            mMediaSession.setPlaybackState(mStateBuilder.build());
+            // Get the ID of the sample that the user selected.
+            int userAnswerSampleID = mQuestionSampleIDs.get(userAnswerIndex);
+
+            // If the user is correct, increase there score and update high score.
+            if (QuizUtils.userCorrect(mAnswerSampleID, userAnswerSampleID)) {
+                mCurrentScore++;
+                QuizUtils.setCurrentScore(QuizActivity.this, mCurrentScore);
+                if (mCurrentScore > mHighScore) {
+                    mHighScore = mCurrentScore;
+                    QuizUtils.setHighScore(QuizActivity.this, mHighScore);
+                }
+            }
+
+            // Remove the answer sample from the list of all samples, so it doesn't get asked again.
+            mRemainingSampleIDs.remove(Integer.valueOf(mAnswerSampleID));
+
+            // Wait some time so the user can see the correct answer, then go to the next question.
+            final Handler handler = new Handler();
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    mExoPlayer.setPlayWhenReady(false);
+                    Intent nextQuestionIntent = new Intent(QuizActivity.this, QuizActivity.class);
+                    nextQuestionIntent.putExtra(REMAINING_SONGS_KEY, mRemainingSampleIDs);
+                    startActivity(nextQuestionIntent);
+                }
+            }, CORRECT_ANSWER_DELAY_MILLIS);
         }
-        showNotification(mStateBuilder.build());
-    }
 
-    @Override
-    public void onPlayerError(ExoPlaybackException error) {
-    }
+        /**
+         * Method that is called when the ExoPlayer state changes. Used to update the MediaSession
+         * PlayBackState to keep in sync, and post the media notification.
+         * @param playWhenReady true if ExoPlayer is playing, false if it's paused.
+         * @param playbackState int describing the state of ExoPlayer. Can be STATE_READY, STATE_IDLE,
+         *                      STATE_BUFFERING, or STATE_ENDED.
+         */
+        @Override
+        public void onPlayerStateChanged(boolean playWhenReady, int playbackState) {
+            if((playbackState == ExoPlayer.STATE_READY) && playWhenReady){
+                mStateBuilder.setState(PlaybackStateCompat.STATE_PLAYING,
+                    mExoPlayer.getCurrentPosition(), 1f);
+                mMediaSession.setPlaybackState(mStateBuilder.build());
+                mMediaSession.setActive(true);
+            } else if((playbackState == ExoPlayer.STATE_READY)){
+                mStateBuilder.setState(PlaybackStateCompat.STATE_PAUSED,
+                    mExoPlayer.getCurrentPosition(), 1f);
+                mMediaSession.setPlaybackState(mStateBuilder.build());
+            }
+            showNotification(mStateBuilder.build());
+        }
 
-    @Override
-    public void onPositionDiscontinuity() {
+        @Override
+        public void onTimelineChanged(Timeline timeline, Object manifest) {
+        }
+
+        @Override
+        public void onTracksChanged(TrackGroupArray trackGroups, TrackSelectionArray trackSelections) {
+        }
+
+        @Override
+        public void onLoadingChanged(boolean isLoading) {
+        }
+
+        @Override
+        public void onPlayerError(ExoPlaybackException error) {
+        }
+
+        @Override
+        public void onPositionDiscontinuity() {
+        }
     }
 
     /**
@@ -411,9 +417,6 @@ public class QuizActivity extends AppCompatActivity implements View.OnClickListe
      * Broadcast Receiver registered to receive the MEDIA_BUTTON intent coming from clients.
      */
     public static class MediaReceiver extends BroadcastReceiver {
-
-        public MediaReceiver() {
-        }
 
         @Override
         public void onReceive(Context context, Intent intent) {
